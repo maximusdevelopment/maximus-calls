@@ -16,7 +16,7 @@ app.post('/new-lead', async (req, res) => {
     setTimeout(async () => {
         try {
             await client.calls.create({
-                url: 'url: 'https://maximus-calls.onrender.com/voice',
+                url: 'https://maximus-calls.onrender.com/voice',
                 to: phone,
                 from: process.env.TWILIO_NUMBER
             });
