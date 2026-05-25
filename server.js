@@ -28,54 +28,52 @@ app.get('/', (req, res) => {
 // 1. HUBSPOT WEBHOOK ENTRY
 // =============================
 app.post('/new-lead', async (req, res) => {
+  console.log('Full HubSpot body:', JSON.stringify(req.body, null, 2));
 
   let phone =
     req.body.phone ||
-    req.body.properties?.phone;
-
-  // Auto-format US numbers
-  if (phone && !phone.startsWith('+1')) {
-    phone = '+1' + phone.replace(/\D/g, '');
-  }
-
-  console.log('New lead phone:', phone);
+    req.body.properties?.phone ||
+    req.body['Phone Number'] ||
+    req.body.phone_number;
 
   if (!phone) {
-    return res.status(400).send('Missing phone number');
+    console.log('Missing phone number from HubSpot payload');
+    return res.status(200).send('No phone number received');
   }
+
+  phone = phone.replace(/\D/g, '');
+
+  if (phone.length === 10) {
+    phone = '+1' + phone;
+  } else if (phone.length === 11 && phone.startsWith('1')) {
+    phone = '+' + phone;
+  } else if (!phone.startsWith('+')) {
+    phone = '+' + phone;
+  }
+
+  console.log('Formatted lead phone:', phone);
 
   res.sendStatus(200);
 
   setTimeout(async () => {
-
     try {
-
       await client.calls.create({
         to: phone,
         from: process.env.TWILIO_NUMBER,
-
         url: `${BASE_URL}/voice`,
         method: 'POST',
-
         machineDetection: 'Enable',
         asyncAmd: true,
-
         asyncAmdStatusCallback: `${BASE_URL}/amd`,
         asyncAmdStatusCallbackMethod: 'POST'
       });
 
       console.log('Call started to:', phone);
-
     } catch (err) {
-
       console.error('Call error:', err.message);
-
     }
-
   }, 10000);
-
 });
-
 // =============================
 // 2. INITIAL CALL HANDLER
 // =============================
