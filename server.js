@@ -23,22 +23,18 @@ app.get('/', (req, res) => {
   res.status(200).send('Maximus Twilio server is running');
 });
 
-app.post('/new-lead', async (req, res) => {
-  console.log('Full HubSpot body:', JSON.stringify(req.body, null, 2));
+app.post('/new-lead', (req, res) => {
+  console.log('Webhook body:', JSON.stringify(req.body, null, 2));
 
-  // Always answer HubSpot immediately
   res.status(200).json({
     success: true,
     message: 'Webhook received'
   });
 
-  let phone =
-    req.body.phone ||
-    req.body.properties?.phone ||
-    req.body.phone_number;
+  let phone = req.body.phone || req.body.properties?.phone || req.body.phone_number;
 
   if (!phone) {
-    console.log('No phone number received from HubSpot');
+    console.log('No phone received');
     return;
   }
 
@@ -49,7 +45,7 @@ app.post('/new-lead', async (req, res) => {
   } else if (phone.length === 11 && phone.startsWith('1')) {
     phone = '+' + phone;
   } else {
-    console.log('Invalid phone format:', phone);
+    console.log('Invalid phone:', phone);
     return;
   }
 
@@ -62,64 +58,38 @@ app.post('/new-lead', async (req, res) => {
         from: process.env.TWILIO_NUMBER,
         url: `${BASE_URL}/voice`,
         method: 'POST',
+
+        // Synchronous AMD — simpler and more stable
         machineDetection: 'Enable',
-        asyncAmd: true,
-        asyncAmdStatusCallback: `${BASE_URL}/amd`,
-        asyncAmdStatusCallbackMethod: 'POST'
+        machineDetectionTimeout: 30
       });
 
       console.log('Call started to:', phone);
     } catch (err) {
-      console.error('Call error:', err.message);
+      console.error('Twilio call error:', err.message);
     }
   }, 10000);
 });
 
 app.post('/voice', (req, res) => {
   const twiml = new twilio.twiml.VoiceResponse();
-
-  twiml.say('Hello, this is Maximus Roofing.');
-  twiml.pause({ length: 2 });
-  twiml.say('Please hold while we connect you.');
-
-  res.type('text/xml');
-  res.send(twiml.toString());
-});
-
-app.post('/amd', async (req, res) => {
   const answeredBy = req.body.AnsweredBy;
-  const callSid = req.body.CallSid;
 
-  console.log('AMD Result:', answeredBy);
-  console.log('Call SID:', callSid);
+  console.log('AnsweredBy:', answeredBy);
 
-  try {
-    if (answeredBy === 'human') {
-      await client.calls(callSid).update({
-        url: `${BASE_URL}/connect`,
-        method: 'POST'
-      });
+  if (answeredBy === 'human' || answeredBy === 'unknown') {
+    twiml.say('Please hold while we connect you with Maximus Roofing.');
 
-      console.log('Human detected. Connecting call.');
-    } else {
-      await client.calls(callSid).update({
-        twiml: '<Response><Hangup/></Response>'
-      });
+    const dial = twiml.dial({
+      answerOnBridge: true,
+      timeout: 25
+    });
 
-      console.log('Voicemail or machine detected. Hanging up.');
-    }
-  } catch (err) {
-    console.error('AMD update error:', err.message);
+    dial.number(MAXIMUS_PHONE);
+  } else {
+    console.log('Machine or voicemail detected. Hanging up.');
+    twiml.hangup();
   }
-
-  res.sendStatus(200);
-});
-
-app.post('/connect', (req, res) => {
-  const twiml = new twilio.twiml.VoiceResponse();
-
-  twiml.say('Please hold while we connect you with Maximus Roofing.');
-  twiml.dial(MAXIMUS_PHONE);
 
   res.type('text/xml');
   res.send(twiml.toString());
