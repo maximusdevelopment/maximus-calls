@@ -14,12 +14,10 @@ const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH);
 const BASE_URL = 'https://maximus-calls.onrender.com';
 const MAXIMUS_PHONE = '+19162229729';
 
-// Health check
 app.get('/', (req, res) => {
   res.send('Maximus Twilio server is running');
 });
 
-// 1. HUBSPOT WEBHOOK ENTRY
 app.post('/new-lead', async (req, res) => {
   const phone = req.body.phone || req.body.properties?.phone;
 
@@ -52,7 +50,6 @@ app.post('/new-lead', async (req, res) => {
   }, 10000);
 });
 
-// 2. INITIAL CALL HANDLER
 app.post('/voice', (req, res) => {
   const twiml = new twilio.twiml.VoiceResponse();
 
@@ -64,7 +61,6 @@ app.post('/voice', (req, res) => {
   res.send(twiml.toString());
 });
 
-// 3. AMD RESULT HANDLER
 app.post('/amd', async (req, res) => {
   const answeredBy = req.body.AnsweredBy;
   const callSid = req.body.CallSid;
@@ -90,38 +86,12 @@ app.post('/amd', async (req, res) => {
   res.sendStatus(200);
 });
 
-// 4. CONNECT WITH CONFIRMATION
+// Direct transfer to Maximus team after human detection
 app.post('/connect', (req, res) => {
   const twiml = new twilio.twiml.VoiceResponse();
 
-  const gather = twiml.gather({
-    numDigits: 1,
-    timeout: 5,
-    action: '/confirm',
-    method: 'POST'
-  });
-
-  gather.say('Press 1 to connect with our roofing specialist.');
-
-  twiml.say('We did not receive your response. Goodbye.');
-  twiml.hangup();
-
-  res.type('text/xml');
-  res.send(twiml.toString());
-});
-
-// 5. FINAL CONNECTION
-app.post('/confirm', (req, res) => {
-  const digit = req.body.Digits;
-  const twiml = new twilio.twiml.VoiceResponse();
-
-  if (digit === '1') {
-    twiml.say('Connecting you now.');
-    twiml.dial(MAXIMUS_PHONE);
-  } else {
-    twiml.say('Thank you. Goodbye.');
-    twiml.hangup();
-  }
+  twiml.say('Please hold while we connect you with Maximus Roofing.');
+  twiml.dial(MAXIMUS_PHONE);
 
   res.type('text/xml');
   res.send(twiml.toString());
