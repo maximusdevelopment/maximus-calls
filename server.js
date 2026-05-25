@@ -1,119 +1,125 @@
 require('dotenv').config();
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const twilio = require('twilio');
 
 const app = express();
+
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
 const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH);
 
-// =============================
-// 1. HUBSPOT WEBHOOK ENTRY
-// =============================
-app.post('/new-lead', async (req, res) => {
-  const phone = req.body.phone;
+const BASE_URL = 'https://maximus-calls.onrender.com';
+const MAXIMUS_PHONE = '+19162229729';
 
-  console.log("New lead:", phone);
+// Health check
+app.get('/', (req, res) => {
+  res.send('Maximus Twilio server is running');
+});
+
+// 1. HUBSPOT WEBHOOK ENTRY
+app.post('/new-lead', async (req, res) => {
+  const phone = req.body.phone || req.body.properties?.phone;
+
+  console.log('New lead phone:', phone);
+
+  if (!phone) {
+    return res.status(400).send('Missing phone number');
+  }
+
+  res.sendStatus(200);
 
   setTimeout(async () => {
     try {
       await client.calls.create({
         to: phone,
         from: process.env.TWILIO_NUMBER,
-        url: 'https://YOUR-RENDER-URL.onrender.com/voice',
+        url: `${BASE_URL}/voice`,
+        method: 'POST',
 
-        // ✅ HUMAN DETECTION
-        machineDetection: "Enable",
+        machineDetection: 'Enable',
         asyncAmd: true,
-        asyncAmdStatusCallback: "https://YOUR-RENDER-URL.onrender.com/amd"
+        asyncAmdStatusCallback: `${BASE_URL}/amd`,
+        asyncAmdStatusCallbackMethod: 'POST'
       });
-    } catch (err) {
-      console.error(err);
-    }
-  }, 10000); // 10 sec delay
 
-  res.sendStatus(200);
+      console.log('Call started to:', phone);
+    } catch (err) {
+      console.error('Call error:', err.message);
+    }
+  }, 10000);
 });
 
-// =============================
 // 2. INITIAL CALL HANDLER
-// =============================
 app.post('/voice', (req, res) => {
-  const VoiceResponse = twilio.twiml.VoiceResponse;
-  const twiml = new VoiceResponse();
+  const twiml = new twilio.twiml.VoiceResponse();
 
-  // ⏳ buffer while AMD runs
-  twiml.say("Hello, this is Maximus Roofing.");
-  twiml.pause({ length: 3 });
-  twiml.say("Please hold while we connect you.");
+  twiml.say('Hello, this is Maximus Roofing.');
+  twiml.pause({ length: 2 });
+  twiml.say('Please hold while we connect you.');
 
   res.type('text/xml');
   res.send(twiml.toString());
 });
 
-// =============================
 // 3. AMD RESULT HANDLER
-// =============================
 app.post('/amd', async (req, res) => {
   const answeredBy = req.body.AnsweredBy;
   const callSid = req.body.CallSid;
 
-  console.log("AMD Result:", answeredBy);
+  console.log('AMD Result:', answeredBy);
+  console.log('Call SID:', callSid);
 
   try {
-    if (answeredBy === "human") {
-      // ✅ HUMAN → CONTINUE FLOW
+    if (answeredBy === 'human') {
       await client.calls(callSid).update({
-        url: "https://YOUR-RENDER-URL.onrender.com/connect"
+        url: `${BASE_URL}/connect`,
+        method: 'POST'
       });
     } else {
-      // ❌ VOICEMAIL → HANG UP
       await client.calls(callSid).update({
-        twiml: "<Response><Hangup/></Response>"
+        twiml: '<Response><Hangup/></Response>'
       });
     }
   } catch (err) {
-    console.error(err);
+    console.error('AMD update error:', err.message);
   }
 
   res.sendStatus(200);
 });
 
-// =============================
-// 4. CONNECT (WITH CONFIRMATION)
-// =============================
+// 4. CONNECT WITH CONFIRMATION
 app.post('/connect', (req, res) => {
-  const VoiceResponse = twilio.twiml.VoiceResponse;
-  const twiml = new VoiceResponse();
+  const twiml = new twilio.twiml.VoiceResponse();
 
-  // 🔥 HUMAN CONFIRMATION (BEST PRACTICE)
-  twiml.gather({
+  const gather = twiml.gather({
     numDigits: 1,
     timeout: 5,
-    action: '/confirm'
+    action: '/confirm',
+    method: 'POST'
   });
 
-  twiml.say("Press 1 to connect with our roofing specialist.");
+  gather.say('Press 1 to connect with our roofing specialist.');
+
+  twiml.say('We did not receive your response. Goodbye.');
+  twiml.hangup();
 
   res.type('text/xml');
   res.send(twiml.toString());
 });
 
-// =============================
 // 5. FINAL CONNECTION
-// =============================
 app.post('/confirm', (req, res) => {
   const digit = req.body.Digits;
+  const twiml = new twilio.twiml.VoiceResponse();
 
-  const VoiceResponse = twilio.twiml.VoiceResponse;
-  const twiml = new VoiceResponse();
-
-  if (digit === "1") {
-    twiml.say("Connecting you now.");
-    twiml.dial('+19162229729');
+  if (digit === '1') {
+    twiml.say('Connecting you now.');
+    twiml.dial(MAXIMUS_PHONE);
   } else {
+    twiml.say('Thank you. Goodbye.');
     twiml.hangup();
   }
 
@@ -121,6 +127,8 @@ app.post('/confirm', (req, res) => {
   res.send(twiml.toString());
 });
 
-// =============================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on ${PORT}`));
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
