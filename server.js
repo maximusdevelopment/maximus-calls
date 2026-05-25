@@ -28,9 +28,14 @@ app.get('/', (req, res) => {
 // 1. HUBSPOT WEBHOOK ENTRY
 // =============================
 app.post('/new-lead', async (req, res) => {
-  const phone =
-    req.body.phone ||
-    req.body.properties?.phone;
+  let phone =
+  req.body.phone ||
+  req.body.properties?.phone;
+
+// Auto-format US numbers
+if (phone && !phone.startsWith('+1')) {
+  phone = '+1' + phone.replace(/\D/g, '');
+}
 
   console.log('New lead phone:', phone);
 
