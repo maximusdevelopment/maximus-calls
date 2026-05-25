@@ -33,12 +33,70 @@ app.post('/voice', (req, res) => {
     const VoiceResponse = twilio.twiml.VoiceResponse;
     const twiml = new VoiceResponse();
 
-    twiml.say("Hello, this is Maximus Roofing. Connecting you now.");
-
-    twiml.dial('9162229729');
+    twiml.say("Hello, this is Maximus Roofing.");
+    twiml.pause({ length: 3 });
+    twiml.say("Please hold while we connect you.");
 
     res.type('text/xml');
     res.send(twiml.toString());
 });
 
 app.listen(3000, () => console.log("Server running"));
+
+app.post('/amd', async (req, res) => {
+  const answeredBy = req.body.AnsweredBy;
+  const callSid = req.body.CallSid;
+
+  console.log("AMD Result:", answeredBy);
+
+  try {
+    if (answeredBy === "human") {
+      // ✅ CONNECT TO YOUR TEAM
+      await client.calls(callSid).update({
+        url: "https://maximus-calls.onrender.com/connect"
+      });
+    } else {
+      // ❌ VOICEMAIL → HANG UP
+      await client.calls(callSid).update({
+        twiml: "<Response><Hangup/></Response>"
+      });
+    }
+  } catch (err) {
+    console.error(err);
+  }
+
+  res.sendStatus(200);
+});
+
+app.post('/connect', (req, res) => {
+  const VoiceResponse = twilio.twiml.VoiceResponse;
+  const twiml = new VoiceResponse();
+
+  twiml.say("Connecting you now.");
+  twiml.dial('+19162229729');
+
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
+
+twiml.gather({
+  numDigits: 1,
+  timeout: 5,
+  action: '/confirm'
+});
+twiml.say("Press 1 to connect with our roofing specialist.");
+
+app.post('/confirm', (req, res) => {
+  const digit = req.body.Digits;
+  const VoiceResponse = twilio.twiml.VoiceResponse;
+  const twiml = new VoiceResponse();
+
+  if (digit === "1") {
+    twiml.dial('+19162229729');
+  } else {
+    twiml.hangup();
+  }
+
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
