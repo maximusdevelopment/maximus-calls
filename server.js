@@ -36,15 +36,14 @@ app.post('/new-lead', async (req, res) => {
     req.body['Phone Number'] ||
     req.body.phone_number;
 
-  if (!phone) {
-    console.log('Missing phone number from HubSpot payload');
-    return res.status(200).json({
-      success: false,
-      message: 'No phone number received'
-    });
-  }
+  if (!phone || typeof phone !== 'string') {
+  console.log('Missing or invalid phone number');
+  console.log(req.body);
 
-  phone = phone.replace(/\D/g, '');
+  return res.status(200).send('No valid phone');
+}
+
+phone = String(phone).replace(/\D/g, '');
 
   if (phone.length === 10) {
     phone = '+1' + phone;
