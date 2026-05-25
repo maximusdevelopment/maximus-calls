@@ -38,7 +38,10 @@ app.post('/new-lead', async (req, res) => {
 
   if (!phone) {
     console.log('Missing phone number from HubSpot payload');
-    return res.status(200).send('No phone number received');
+    return res.status(200).json({
+      success: false,
+      message: 'No phone number received'
+    });
   }
 
   phone = phone.replace(/\D/g, '');
@@ -53,8 +56,13 @@ app.post('/new-lead', async (req, res) => {
 
   console.log('Formatted lead phone:', phone);
 
-  res.sendStatus(200);
+  // Respond to HubSpot immediately
+  res.status(200).json({
+    success: true,
+    message: 'Webhook received'
+  });
 
+  // 10-second delay before Twilio call
   setTimeout(async () => {
     try {
       await client.calls.create({
