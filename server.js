@@ -143,12 +143,15 @@ app.post('/voice', (req, res) => {
     twiml.say('Please hold while we connect you with Maximus Roofing.');
 
     const dial = twiml.dial({
-      answerOnBridge: true,
-      timeout: 25,
-      record: 'record-from-answer-dual',
-      recordingStatusCallback: `${BASE_URL}/recording-complete`,
-      recordingStatusCallbackMethod: 'POST'
-    });
+  answerOnBridge: true,
+
+  // Prevent Maximus voicemail from answering
+  timeout: 12,
+
+  record: 'record-from-answer-dual',
+  recordingStatusCallback: `${BASE_URL}/recording-complete`,
+  recordingStatusCallbackMethod: 'POST'
+});
 
     dial.number(MAXIMUS_PHONE);
   } else {
