@@ -31,7 +31,12 @@ app.post('/new-lead', (req, res) => {
     message: 'Webhook received'
   });
 
-  let phone = req.body.phone || req.body.properties?.phone || req.body.phone_number;
+  let phone =
+  req.body.phone ||
+  req.body.mobilephone ||
+  req.body.properties?.phone ||
+  req.body.properties?.mobilephone ||
+  req.body.phone_number;
 
   if (!phone) {
     console.log('No phone received');
