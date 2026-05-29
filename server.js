@@ -115,18 +115,15 @@ function getNextBusinessDayAtPacific(hour, minute) {
 
 function getNextRetryTime(attemptNumber) {
   if (attemptNumber === 1) {
-    // Attempt 2 = same day + 2 hours
     const retry = new Date();
     retry.setHours(retry.getHours() + 2);
     return retry.toISOString();
   }
 
   if (attemptNumber === 2) {
-    // Attempt 3 = next business day at 9:00 AM Pacific
     return getNextBusinessDayAtPacific(9, 0);
   }
 
-  // After attempt 3, stop retries
   return '';
 }
 
