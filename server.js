@@ -495,6 +495,25 @@ app.get('/operator', (req, res) => {
   `);
 });
 
+app.post('/incoming-call', (req, res) => {
+  const twiml = new twilio.twiml.VoiceResponse();
+
+  twiml.say('Thank you for calling Maximus Roofing. Please hold while we connect you.');
+
+  const dial = twiml.dial({
+    answerOnBridge: true,
+    timeout: 20
+  });
+
+  dial.number(MAXIMUS_PHONE);
+
+  twiml.say('Our team is unavailable at the moment. Please call again shortly or wait for our callback.');
+  twiml.hangup();
+
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
+
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
