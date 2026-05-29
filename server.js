@@ -165,24 +165,38 @@ async function markCallResult(lead, status) {
   lead.status = status;
 
   const properties = {
-    auto_call_status: status
-  };
+  auto_call_status: status
+};
 
-  if (
-    status === 'no-answer' ||
-    status === 'busy' ||
-    status === 'failed' ||
-    status === 'voicemail'
-  ) {
-    properties.hs_lead_status = 'ATTEMPTED_TO_CONTACT';
-  }
+if (
+  status === 'no-answer' ||
+  status === 'busy' ||
+  status === 'failed' ||
+  status === 'voicemail'
+) {
+  properties.hs_lead_status = 'ATTEMPTED_TO_CONTACT';
+}
 
-  if (
-    status === 'answered' ||
-    status === 'connected'
-  ) {
-    properties.hs_lead_status = 'CONNECTED';
-  }
+if (
+  status === 'answered' ||
+  status === 'connected'
+) {
+  properties.hs_lead_status = 'CONNECTED';
+}
+
+if (
+  status === 'no-answer' ||
+  status === 'busy' ||
+  status === 'failed' ||
+  status === 'voicemail'
+) {
+  const nextRetry = getNextRetryTime(lead.attemptNumber);
+
+  properties.auto_call_attempts = String(lead.attemptNumber);
+  properties.next_call_attempt = nextRetry;
+
+  lead.nextCallAttempt = nextRetry;
+}
 
 // -----------------------------
 // Start call
