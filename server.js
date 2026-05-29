@@ -153,6 +153,50 @@ async function updateHubSpotContact(contactId, properties) {
   }
 }
 
+async function createHubSpotNote(contactId, noteBody) {
+  if (!HUBSPOT_TOKEN || !contactId) return;
+
+  try {
+    const timestamp = Date.now();
+
+    await axios.post(
+      'https://api.hubapi.com/crm/v3/objects/notes',
+      {
+        properties: {
+          hs_note_body: noteBody,
+          hs_timestamp: timestamp
+        },
+        associations: [
+          {
+            to: {
+              id: contactId
+            },
+            types: [
+              {
+                associationCategory: 'HUBSPOT_DEFINED',
+                associationTypeId: 202
+              }
+            ]
+          }
+        ]
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${HUBSPOT_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    console.log('HubSpot note created for contact:', contactId);
+  } catch (err) {
+    console.error(
+      'HubSpot note creation error:',
+      err.response?.data || err.message
+    );
+  }
+}
+
 async function markCallResult(lead, status) {
   if (!lead) return;
 
@@ -376,6 +420,8 @@ app.post('/recording-complete', async (req, res) => {
     console.log('Recording callback body:', JSON.stringify(req.body, null, 2));
 
     const callSid = req.body.CallSid;
+    const recordingSid = req.body.RecordingSid || '';
+    const recordingDuration = req.body.RecordingDuration || '';
     const recordingUrl = req.body.RecordingUrl
       ? `${req.body.RecordingUrl}.mp3`
       : '';
@@ -399,6 +445,20 @@ app.post('/recording-complete', async (req, res) => {
         next_call_attempt: '',
         hs_lead_status: 'CONNECTED'
       });
+
+      await createHubSpotNote(
+        lead.contactId,
+        `
+          <p><strong>Twilio call recording completed</strong></p>
+          <p><strong>Lead:</strong> ${lead.firstname || ''} ${lead.lastname || ''}</p>
+          <p><strong>Phone:</strong> ${lead.phone || ''}</p>
+          <p><strong>Attempt:</strong> ${lead.attemptNumber || ''}</p>
+          <p><strong>Call SID:</strong> ${callSid}</p>
+          <p><strong>Recording SID:</strong> ${recordingSid}</p>
+          <p><strong>Duration:</strong> ${recordingDuration} seconds</p>
+          <p><a href="${recordingUrl}" target="_blank">Open Call Recording</a></p>
+        `
+      );
     }
 
     console.log('Recording URL:', recordingUrl);
@@ -408,6 +468,25 @@ app.post('/recording-complete', async (req, res) => {
     console.error('Recording callback error:', err.message);
     res.status(500).send('Recording callback error');
   }
+});
+
+app.post('/incoming-call', (req, res) => {
+  const twiml = new twilio.twiml.VoiceResponse();
+
+  twiml.say('Thank you for calling Maximus Roofing. Please hold while we connect you.');
+
+  const dial = twiml.dial({
+    answerOnBridge: true,
+    timeout: 20
+  });
+
+  dial.number(MAXIMUS_PHONE);
+
+  twiml.say('Our team is unavailable at the moment. Please call again shortly or wait for our callback.');
+  twiml.hangup();
+
+  res.type('text/xml');
+  res.send(twiml.toString());
 });
 
 app.get('/operator', (req, res) => {
@@ -493,25 +572,6 @@ app.get('/operator', (req, res) => {
       </body>
     </html>
   `);
-});
-
-app.post('/incoming-call', (req, res) => {
-  const twiml = new twilio.twiml.VoiceResponse();
-
-  twiml.say('Thank you for calling Maximus Roofing. Please hold while we connect you.');
-
-  const dial = twiml.dial({
-    answerOnBridge: true,
-    timeout: 20
-  });
-
-  dial.number(MAXIMUS_PHONE);
-
-  twiml.say('Our team is unavailable at the moment. Please call again shortly or wait for our callback.');
-  twiml.hangup();
-
-  res.type('text/xml');
-  res.send(twiml.toString());
 });
 
 const PORT = process.env.PORT || 3000;
