@@ -314,21 +314,39 @@ app.post('/voice', async (req, res) => {
   console.log('AnsweredBy:', answeredBy);
   console.log('Voice CallSid:', callSid);
 
-if (answeredBy === 'human') {
-  if (lead) {
-    await markCallResult(lead, 'answered');
+  if (answeredBy === 'human') {
+    if (lead) {
+      await markCallResult(lead, 'answered');
+    }
+
+    twiml.say('This call may be recorded for quality and training purposes.');
+    twiml.say('Please hold while we connect you with Maximus Roofing.');
+
+    const dial = twiml.dial({
+      answerOnBridge: true,
+      timeout: 12,
+      record: 'record-from-answer-dual',
+      recordingStatusCallback: `${BASE_URL}/recording-complete`,
+      recordingStatusCallbackMethod: 'POST'
+    });
+
+    dial.number(MAXIMUS_PHONE);
+
+    twiml.say('Our team is unavailable at the moment. We will call you back shortly.');
+    twiml.hangup();
+  } else {
+    console.log('Machine, voicemail, or unknown detected. Hanging up.');
+
+    if (lead) {
+      await markCallResult(lead, 'voicemail');
+    }
+
+    twiml.hangup();
   }
 
-  twiml.say('This call may be recorded for quality and training purposes.');
-  twiml.say('Please hold while we connect you with Maximus Roofing.');
-
-  const dial = twiml.dial({
-    answerOnBridge: true,
-    timeout: 12,
-    record: 'record-from-answer-dual',
-    recordingStatusCallback: `${BASE_URL}/recording-complete`,
-    recordingStatusCallbackMethod: 'POST'
-  });
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
 
   dial.number(MAXIMUS_PHONE);
 };
