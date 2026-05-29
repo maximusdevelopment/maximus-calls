@@ -24,10 +24,6 @@ const HUBSPOT_TOKEN = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
 let callbackQueue = [];
 let callMap = {};
 
-// -----------------------------
-// Helpers
-// -----------------------------
-
 function formatPhone(rawPhone) {
   if (!rawPhone) return null;
 
@@ -51,9 +47,7 @@ function extractPhone(body) {
 }
 
 function determineAttempt(body) {
-  if (body.attempt) {
-    return Number(body.attempt);
-  }
+  if (body.attempt) return Number(body.attempt);
 
   const currentAttempts = Number(body.auto_call_attempts || 0);
 
@@ -165,42 +159,34 @@ async function markCallResult(lead, status) {
   lead.status = status;
 
   const properties = {
-  auto_call_status: status
-};
+    auto_call_status: status
+  };
 
-if (
-  status === 'no-answer' ||
-  status === 'busy' ||
-  status === 'failed' ||
-  status === 'voicemail'
-) {
-  properties.hs_lead_status = 'ATTEMPTED_TO_CONTACT';
+  if (
+    status === 'no-answer' ||
+    status === 'busy' ||
+    status === 'failed' ||
+    status === 'voicemail'
+  ) {
+    properties.hs_lead_status = 'ATTEMPTED_TO_CONTACT';
+
+    const nextRetry = getNextRetryTime(lead.attemptNumber);
+
+    properties.auto_call_attempts = String(lead.attemptNumber);
+    properties.next_call_attempt = nextRetry;
+
+    lead.nextCallAttempt = nextRetry;
+  }
+
+  if (status === 'answered' || status === 'connected') {
+    properties.auto_call_status = 'answered';
+    properties.hs_lead_status = 'CONNECTED';
+    properties.auto_call_attempts = String(lead.attemptNumber);
+    properties.next_call_attempt = '';
+  }
+
+  await updateHubSpotContact(lead.contactId, properties);
 }
-
-if (
-  status === 'answered' ||
-  status === 'connected'
-) {
-  properties.hs_lead_status = 'CONNECTED';
-}
-
-if (
-  status === 'no-answer' ||
-  status === 'busy' ||
-  status === 'failed' ||
-  status === 'voicemail'
-) {
-  const nextRetry = getNextRetryTime(lead.attemptNumber);
-
-  properties.auto_call_attempts = String(lead.attemptNumber);
-  properties.next_call_attempt = nextRetry;
-
-  lead.nextCallAttempt = nextRetry;
-}
-
-// -----------------------------
-// Start call
-// -----------------------------
 
 async function startLeadCall(reqBody, sourceType) {
   console.log(`${sourceType} webhook body:`, JSON.stringify(reqBody, null, 2));
@@ -234,7 +220,8 @@ async function startLeadCall(reqBody, sourceType) {
     status: `attempt_${attemptNumber}_started`,
     createdAt: new Date().toISOString(),
     callSid: '',
-    recordingUrl: ''
+    recordingUrl: '',
+    nextCallAttempt: ''
   };
 
   callbackQueue.unshift(lead);
@@ -243,7 +230,8 @@ async function startLeadCall(reqBody, sourceType) {
     auto_call_attempts: String(attemptNumber),
     auto_call_status: `attempt_${attemptNumber}_started`,
     next_call_attempt: '',
-    twilio_call_sid: ''
+    twilio_call_sid: '',
+    hs_lead_status: 'ATTEMPTED_TO_CONTACT'
   });
 
   setTimeout(async () => {
@@ -270,7 +258,8 @@ async function startLeadCall(reqBody, sourceType) {
       await updateHubSpotContact(lead.contactId, {
         twilio_call_sid: call.sid,
         auto_call_status: `attempt_${attemptNumber}_call_started`,
-        auto_call_attempts: String(attemptNumber)
+        auto_call_attempts: String(attemptNumber),
+        hs_lead_status: 'ATTEMPTED_TO_CONTACT'
       });
 
       console.log('Call started to:', phone);
@@ -289,10 +278,6 @@ async function startLeadCall(reqBody, sourceType) {
     lead
   };
 }
-
-// -----------------------------
-// Routes
-// -----------------------------
 
 app.get('/', (req, res) => {
   res.status(200).send('Maximus Twilio server is running');
@@ -411,7 +396,8 @@ app.post('/recording-complete', async (req, res) => {
         twilio_call_sid: callSid,
         auto_call_status: 'answered',
         auto_call_attempts: String(lead.attemptNumber),
-        next_call_attempt: ''
+        next_call_attempt: '',
+        hs_lead_status: 'CONNECTED'
       });
     }
 
