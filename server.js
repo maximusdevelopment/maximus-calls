@@ -174,22 +174,15 @@ async function markCallResult(lead, status) {
     status === 'failed' ||
     status === 'voicemail'
   ) {
-    const nextRetry = getNextRetryTime(lead.attemptNumber);
-
-    properties.auto_call_attempts = String(lead.attemptNumber);
-    properties.next_call_attempt = nextRetry;
-
-    lead.nextCallAttempt = nextRetry;
+    properties.hs_lead_status = 'ATTEMPTED_TO_CONTACT';
   }
 
-  if (status === 'answered' || status === 'connected') {
-    properties.auto_call_status = 'answered';
-    properties.auto_call_attempts = String(lead.attemptNumber);
-    properties.next_call_attempt = '';
+  if (
+    status === 'answered' ||
+    status === 'connected'
+  ) {
+    properties.hs_lead_status = 'CONNECTED';
   }
-
-  await updateHubSpotContact(lead.contactId, properties);
-}
 
 // -----------------------------
 // Start call
