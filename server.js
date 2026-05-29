@@ -345,25 +345,6 @@ app.post('/voice', async (req, res) => {
   res.send(twiml.toString());
 });
 
-  dial.number(MAXIMUS_PHONE);
-};
-
-    twiml.say('Our team is unavailable at the moment. We will call you back shortly.');
-    twiml.hangup();
-  } else {
-    console.log('Machine or voicemail detected. Hanging up.');
-
-    if (lead) {
-      await markCallResult(lead, 'voicemail');
-    }
-
-    twiml.hangup();
-  }
-
-  res.type('text/xml');
-  res.send(twiml.toString());
-});
-
 app.post('/call-status', async (req, res) => {
   const callSid = req.body.CallSid;
   const callStatus = req.body.CallStatus;
