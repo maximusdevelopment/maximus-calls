@@ -46,16 +46,23 @@ function extractPhone(body) {
   );
 }
 
-function determineAttempt(body) {
-  if (body.attempt) return Number(body.attempt);
+function getPacificDate() {
+  return new Date(
+    new Date().toLocaleString('en-US', {
+      timeZone: 'America/Los_Angeles'
+    })
+  );
+}
 
-  const currentAttempts = Number(body.auto_call_attempts || 0);
+function isBusinessHoursPacific() {
+  const pacificNow = getPacificDate();
+  const day = pacificNow.getDay();
+  const hour = pacificNow.getHours();
 
-  if (body.source === 'retry_call') {
-    return currentAttempts + 1;
-  }
+  const isWeekday = day >= 1 && day <= 5;
+  const isBusinessHour = hour >= 8 && hour < 18;
 
-  return currentAttempts > 0 ? currentAttempts : 1;
+  return isWeekday && isBusinessHour;
 }
 
 function getPacificOffsetMinutes(date) {
@@ -75,23 +82,7 @@ function getPacificOffsetMinutes(date) {
   return hours * 60 + Math.sign(hours) * minutes;
 }
 
-function getNextBusinessDayAtPacific(hour, minute) {
-  const now = new Date();
-
-  const pacificNowString = now.toLocaleString('en-US', {
-    timeZone: 'America/Los_Angeles'
-  });
-
-  const pacificNow = new Date(pacificNowString);
-
-  let target = new Date(pacificNow);
-  target.setDate(target.getDate() + 1);
-  target.setHours(hour, minute, 0, 0);
-
-  while (target.getDay() === 0 || target.getDay() === 6) {
-    target.setDate(target.getDate() + 1);
-  }
-
+function pacificLocalToUTCISOString(target) {
   const offsetMinutes = getPacificOffsetMinutes(target);
 
   const utcMs =
@@ -107,6 +98,44 @@ function getNextBusinessDayAtPacific(hour, minute) {
   return new Date(utcMs).toISOString();
 }
 
+function getNextBusinessMorningPacific(hour = 8, minute = 0) {
+  const pacificNow = getPacificDate();
+
+  let target = new Date(pacificNow);
+  target.setSeconds(0, 0);
+
+  const day = target.getDay();
+  const currentHour = target.getHours();
+
+  if (day >= 1 && day <= 5 && currentHour < hour) {
+    target.setHours(hour, minute, 0, 0);
+  } else {
+    target.setDate(target.getDate() + 1);
+    target.setHours(hour, minute, 0, 0);
+  }
+
+  while (target.getDay() === 0 || target.getDay() === 6) {
+    target.setDate(target.getDate() + 1);
+    target.setHours(hour, minute, 0, 0);
+  }
+
+  return pacificLocalToUTCISOString(target);
+}
+
+function getNextBusinessDayAtPacific(hour, minute) {
+  const pacificNow = getPacificDate();
+
+  let target = new Date(pacificNow);
+  target.setDate(target.getDate() + 1);
+  target.setHours(hour, minute, 0, 0);
+
+  while (target.getDay() === 0 || target.getDay() === 6) {
+    target.setDate(target.getDate() + 1);
+  }
+
+  return pacificLocalToUTCISOString(target);
+}
+
 function getNextRetryTime(attemptNumber) {
   if (attemptNumber === 1) {
     const retry = new Date();
@@ -119,6 +148,22 @@ function getNextRetryTime(attemptNumber) {
   }
 
   return '';
+}
+
+function determineAttempt(body) {
+  if (body.attempt) return Number(body.attempt);
+
+  const currentAttempts = Number(body.auto_call_attempts || 0);
+
+  if (body.source === 'retry_call') {
+    return currentAttempts + 1;
+  }
+
+  return currentAttempts > 0 ? currentAttempts : 1;
+}
+
+function determineCurrentAttempts(body) {
+  return Number(body.auto_call_attempts || 0);
 }
 
 async function updateHubSpotContact(contactId, properties) {
@@ -157,20 +202,16 @@ async function createHubSpotNote(contactId, noteBody) {
   if (!HUBSPOT_TOKEN || !contactId) return;
 
   try {
-    const timestamp = Date.now();
-
     await axios.post(
       'https://api.hubapi.com/crm/v3/objects/notes',
       {
         properties: {
           hs_note_body: noteBody,
-          hs_timestamp: timestamp
+          hs_timestamp: Date.now()
         },
         associations: [
           {
-            to: {
-              id: contactId
-            },
+            to: { id: contactId },
             types: [
               {
                 associationCategory: 'HUBSPOT_DEFINED',
@@ -246,15 +287,53 @@ async function startLeadCall(reqBody, sourceType) {
     };
   }
 
+  const contactId =
+    reqBody.contactId ||
+    reqBody.hs_object_id ||
+    reqBody.objectId ||
+    reqBody.recordId ||
+    '';
+
+  const currentAttempts = determineCurrentAttempts(reqBody);
   const attemptNumber = determineAttempt(reqBody);
 
+  if (!isBusinessHoursPacific()) {
+    const nextBusinessMorning = getNextBusinessMorningPacific(8, 0);
+
+    await updateHubSpotContact(contactId, {
+      auto_call_attempts: String(currentAttempts),
+      auto_call_status: 'after_hours_scheduled',
+      next_call_attempt: nextBusinessMorning,
+      hs_lead_status: 'ATTEMPTED_TO_CONTACT'
+    });
+
+    const queuedLead = {
+      contactId,
+      firstname: reqBody.firstname || reqBody.firstName || '',
+      lastname: reqBody.lastname || reqBody.lastName || '',
+      email: reqBody.email || '',
+      phone,
+      source: reqBody.source || sourceType,
+      attemptNumber: currentAttempts,
+      status: 'after_hours_scheduled',
+      createdAt: new Date().toISOString(),
+      callSid: '',
+      recordingUrl: '',
+      nextCallAttempt: nextBusinessMorning
+    };
+
+    callbackQueue.unshift(queuedLead);
+
+    return {
+      success: true,
+      message: 'Outside business hours. Lead scheduled for next business day 8:00 AM Pacific.',
+      scheduledFor: nextBusinessMorning,
+      lead: queuedLead
+    };
+  }
+
   const lead = {
-    contactId:
-      reqBody.contactId ||
-      reqBody.hs_object_id ||
-      reqBody.objectId ||
-      reqBody.recordId ||
-      '',
+    contactId,
     firstname: reqBody.firstname || reqBody.firstName || '',
     lastname: reqBody.lastname || reqBody.lastName || '',
     email: reqBody.email || '',
@@ -347,7 +426,14 @@ app.post('/voice', async (req, res) => {
   console.log('AnsweredBy:', answeredBy);
   console.log('Voice CallSid:', callSid);
 
-  if (answeredBy === 'human') {
+  const isMachine =
+    answeredBy === 'machine_start' ||
+    answeredBy === 'machine_end_beep' ||
+    answeredBy === 'machine_end_silence' ||
+    answeredBy === 'machine_end_other' ||
+    answeredBy === 'fax';
+
+  if (!isMachine) {
     if (lead) {
       await markCallResult(lead, 'answered');
     }
@@ -368,7 +454,7 @@ app.post('/voice', async (req, res) => {
     twiml.say('Our team is unavailable at the moment. We will call you back shortly.');
     twiml.hangup();
   } else {
-    console.log('Machine, voicemail, or unknown detected. Hanging up.');
+    console.log('Machine or voicemail detected. Hanging up.');
 
     if (lead) {
       await markCallResult(lead, 'voicemail');
