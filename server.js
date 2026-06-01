@@ -21,17 +21,15 @@ const BASE_URL = process.env.BASE_URL || 'https://maximus-calls.onrender.com';
 const MAXIMUS_PHONE = process.env.MAXIMUS_PHONE || '+19162229729';
 const HUBSPOT_TOKEN = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
 
+const MAX_CALL_ATTEMPTS = 5;
+
 let callbackQueue = [];
 let callMap = {};
 
-// -----------------------------
-// Phone helpers
-// -----------------------------
 function formatPhone(rawPhone) {
   if (!rawPhone) return null;
 
   const original = String(rawPhone).trim();
-
   if (original.startsWith('+')) return original;
 
   const digits = original.replace(/\D/g, '');
@@ -53,10 +51,6 @@ function extractPhone(body) {
   );
 }
 
-// -----------------------------
-// Pacific business hours
-// Monday-Friday, 8 AM - 6 PM
-// -----------------------------
 function getPacificParts(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Los_Angeles',
@@ -89,11 +83,7 @@ function getPacificDate() {
 
 function isBusinessHoursPacific() {
   const { weekday, hour } = getPacificParts();
-
-  const isWeekday = weekday !== 'Sat' && weekday !== 'Sun';
-  const isBusinessHour = hour >= 8 && hour < 18;
-
-  return isWeekday && isBusinessHour;
+  return weekday !== 'Sat' && weekday !== 'Sun' && hour >= 8 && hour < 18;
 }
 
 function getPacificOffsetMinutes(date) {
@@ -133,7 +123,6 @@ function getNextBusinessMorningPacific(hour = 8, minute = 0) {
   const p = getPacificParts();
 
   let target = new Date(p.year, p.month - 1, p.day, hour, minute, 0, 0);
-
   const todayIsWeekday = p.weekday !== 'Sat' && p.weekday !== 'Sun';
 
   if (!todayIsWeekday || p.hour >= hour) {
@@ -147,14 +136,19 @@ function getNextBusinessMorningPacific(hour = 8, minute = 0) {
   return pacificLocalToUTCISOString(target);
 }
 
-function getNextBusinessDayAtPacific(hour, minute) {
+function getBusinessDaysFromNowAtPacific(daysToAdd, hour, minute) {
   const p = getPacificParts();
 
   let target = new Date(p.year, p.month - 1, p.day, hour, minute, 0, 0);
-  target.setDate(target.getDate() + 1);
+  let added = 0;
 
-  while (target.getDay() === 0 || target.getDay() === 6) {
+  while (added < daysToAdd) {
     target.setDate(target.getDate() + 1);
+    const day = target.getDay();
+
+    if (day !== 0 && day !== 6) {
+      added += 1;
+    }
   }
 
   return pacificLocalToUTCISOString(target);
@@ -168,15 +162,20 @@ function getNextRetryTime(attemptNumber) {
   }
 
   if (attemptNumber === 2) {
-    return getNextBusinessDayAtPacific(9, 0);
+    return getBusinessDaysFromNowAtPacific(1, 9, 0);
+  }
+
+  if (attemptNumber === 3) {
+    return getBusinessDaysFromNowAtPacific(2, 11, 0);
+  }
+
+  if (attemptNumber === 4) {
+    return getBusinessDaysFromNowAtPacific(5, 15, 0);
   }
 
   return '';
 }
 
-// -----------------------------
-// Attempts
-// -----------------------------
 function determineCurrentAttempts(body) {
   return Number(body.auto_call_attempts || 0);
 }
@@ -193,9 +192,6 @@ function determineAttempt(body) {
   return currentAttempts > 0 ? currentAttempts : 1;
 }
 
-// -----------------------------
-// HubSpot
-// -----------------------------
 async function updateHubSpotContact(contactId, properties) {
   if (!HUBSPOT_TOKEN) {
     console.log('HubSpot update skipped: HUBSPOT_PRIVATE_APP_TOKEN missing.');
@@ -278,13 +274,19 @@ async function markCallResult(lead, status) {
     status === 'voicemail'
   ) {
     properties.hs_lead_status = 'ATTEMPTED_TO_CONTACT';
+    properties.auto_call_attempts = String(lead.attemptNumber);
 
     const nextRetry = getNextRetryTime(lead.attemptNumber);
 
-    properties.auto_call_attempts = String(lead.attemptNumber);
-    properties.next_call_attempt = nextRetry;
-
-    lead.nextCallAttempt = nextRetry;
+    if (nextRetry) {
+      properties.next_call_attempt = nextRetry;
+      lead.nextCallAttempt = nextRetry;
+    } else {
+      properties.auto_call_status = 'max_attempts_reached';
+      properties.next_call_attempt = '';
+      lead.status = 'max_attempts_reached';
+      lead.nextCallAttempt = '';
+    }
   }
 
   if (status === 'answered' || status === 'connected') {
@@ -292,16 +294,12 @@ async function markCallResult(lead, status) {
     properties.hs_lead_status = 'CONNECTED';
     properties.auto_call_attempts = String(lead.attemptNumber);
     properties.next_call_attempt = '';
-
     lead.nextCallAttempt = '';
   }
 
   await updateHubSpotContact(lead.contactId, properties);
 }
 
-// -----------------------------
-// Start call
-// -----------------------------
 async function startLeadCall(reqBody, sourceType) {
   console.log(`${sourceType} webhook body:`, JSON.stringify(reqBody, null, 2));
 
@@ -330,7 +328,7 @@ async function startLeadCall(reqBody, sourceType) {
   const currentAttempts = determineCurrentAttempts(reqBody);
   const attemptNumber = determineAttempt(reqBody);
 
-  if (attemptNumber > 3) {
+  if (attemptNumber > MAX_CALL_ATTEMPTS) {
     await updateHubSpotContact(contactId, {
       auto_call_status: 'max_attempts_reached',
       auto_call_attempts: String(currentAttempts),
@@ -448,9 +446,6 @@ async function startLeadCall(reqBody, sourceType) {
   };
 }
 
-// -----------------------------
-// Routes
-// -----------------------------
 app.get('/', (req, res) => {
   res.status(200).send('Maximus Twilio server is running');
 });
@@ -541,21 +536,10 @@ app.post('/agent-whisper', (req, res) => {
   const leadName = req.query.leadName || '';
 
   if (leadName) {
-    twiml.say(
-      `New marketing lead from HubSpot. ${leadName}. Connecting now.`
-    );
+    twiml.say(`New marketing lead from HubSpot. ${leadName}. Connecting now.`);
   } else {
-    twiml.say(
-      'New marketing lead from HubSpot. Connecting now.'
-    );
+    twiml.say('New marketing lead from HubSpot. Connecting now.');
   }
-
-  res.type('text/xml');
-  res.send(twiml.toString());
-});
-
-app.post('/agent-accept', (req, res) => {
-  const twiml = new twilio.twiml.VoiceResponse();
 
   res.type('text/xml');
   res.send(twiml.toString());
