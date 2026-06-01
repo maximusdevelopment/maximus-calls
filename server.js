@@ -496,18 +496,28 @@ app.post('/voice', async (req, res) => {
       await markCallResult(lead, 'answered');
     }
 
-    twiml.say('This call may be recorded for quality and training purposes.');
     twiml.say('Please hold while we connect you with Maximus Roofing.');
+
+    const leadName = encodeURIComponent(
+      `${lead?.firstname || ''} ${lead?.lastname || ''}`.trim()
+    );
 
     const dial = twiml.dial({
       answerOnBridge: true,
       timeout: 12,
+      callerId: lead?.phone || process.env.TWILIO_NUMBER,
       record: 'record-from-answer-dual',
       recordingStatusCallback: `${BASE_URL}/recording-complete`,
       recordingStatusCallbackMethod: 'POST'
     });
 
-    dial.number(MAXIMUS_PHONE);
+    dial.number(
+      {
+        url: `${BASE_URL}/agent-whisper?leadName=${leadName}`,
+        method: 'POST'
+      },
+      MAXIMUS_PHONE
+    );
 
     twiml.say('Our team is unavailable at the moment. We will call you back shortly.');
     twiml.hangup();
@@ -520,6 +530,38 @@ app.post('/voice', async (req, res) => {
 
     twiml.hangup();
   }
+
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
+
+app.post('/agent-whisper', (req, res) => {
+  const twiml = new twilio.twiml.VoiceResponse();
+
+  const leadName = req.query.leadName || '';
+
+  const gather = twiml.gather({
+    numDigits: 1,
+    action: `${BASE_URL}/agent-accept`,
+    method: 'POST',
+    timeout: 8
+  });
+
+  if (leadName) {
+    gather.say(`New marketing lead from HubSpot. ${leadName}. Press any key to accept the call.`);
+  } else {
+    gather.say('New marketing lead from HubSpot. Press any key to accept the call.');
+  }
+
+  twiml.say('No input received. Goodbye.');
+  twiml.hangup();
+
+  res.type('text/xml');
+  res.send(twiml.toString());
+});
+
+app.post('/agent-accept', (req, res) => {
+  const twiml = new twilio.twiml.VoiceResponse();
 
   res.type('text/xml');
   res.send(twiml.toString());
