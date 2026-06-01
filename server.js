@@ -24,14 +24,22 @@ const HUBSPOT_TOKEN = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
 let callbackQueue = [];
 let callMap = {};
 
+// -----------------------------
+// PHONE HELPERS
+// -----------------------------
 function formatPhone(rawPhone) {
   if (!rawPhone) return null;
 
-  let phone = String(rawPhone).replace(/\D/g, '');
+  const original = String(rawPhone).trim();
 
-  if (phone.length === 10) return '+1' + phone;
-  if (phone.length === 11 && phone.startsWith('1')) return '+' + phone;
-  if (String(rawPhone).startsWith('+')) return String(rawPhone);
+  if (original.startsWith('+')) {
+    return original;
+  }
+
+  const digits = original.replace(/\D/g, '');
+
+  if (digits.length === 10) return '+1' + digits;
+  if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;
 
   return null;
 }
@@ -42,10 +50,15 @@ function extractPhone(body) {
     body.mobilephone ||
     body.properties?.phone ||
     body.properties?.mobilephone ||
-    body.phone_number
+    body.phone_number ||
+    null
   );
 }
 
+// -----------------------------
+// BUSINESS HOURS — PACIFIC TIME
+// Monday-Friday, 8 AM - 6 PM
+// -----------------------------
 function getPacificDate() {
   return new Date(
     new Date().toLocaleString('en-US', {
@@ -56,7 +69,8 @@ function getPacificDate() {
 
 function isBusinessHoursPacific() {
   const pacificNow = getPacificDate();
-  const day = pacificNow.getDay();
+
+  const day = pacificNow.getDay(); // 0 Sunday, 6 Saturday
   const hour = pacificNow.getHours();
 
   const isWeekday = day >= 1 && day <= 5;
@@ -131,6 +145,7 @@ function getNextBusinessDayAtPacific(hour, minute) {
 
   while (target.getDay() === 0 || target.getDay() === 6) {
     target.setDate(target.getDate() + 1);
+    target.setHours(hour, minute, 0, 0);
   }
 
   return pacificLocalToUTCISOString(target);
@@ -150,10 +165,17 @@ function getNextRetryTime(attemptNumber) {
   return '';
 }
 
+// -----------------------------
+// ATTEMPT LOGIC
+// -----------------------------
+function determineCurrentAttempts(body) {
+  return Number(body.auto_call_attempts || 0);
+}
+
 function determineAttempt(body) {
   if (body.attempt) return Number(body.attempt);
 
-  const currentAttempts = Number(body.auto_call_attempts || 0);
+  const currentAttempts = determineCurrentAttempts(body);
 
   if (body.source === 'retry_call') {
     return currentAttempts + 1;
@@ -162,10 +184,9 @@ function determineAttempt(body) {
   return currentAttempts > 0 ? currentAttempts : 1;
 }
 
-function determineCurrentAttempts(body) {
-  return Number(body.auto_call_attempts || 0);
-}
-
+// -----------------------------
+// HUBSPOT
+// -----------------------------
 async function updateHubSpotContact(contactId, properties) {
   if (!HUBSPOT_TOKEN) {
     console.log('HubSpot update skipped: HUBSPOT_PRIVATE_APP_TOKEN missing.');
@@ -268,13 +289,21 @@ async function markCallResult(lead, status) {
     properties.hs_lead_status = 'CONNECTED';
     properties.auto_call_attempts = String(lead.attemptNumber);
     properties.next_call_attempt = '';
+
+    lead.nextCallAttempt = '';
   }
 
   await updateHubSpotContact(lead.contactId, properties);
 }
 
+// -----------------------------
+// START CALL
+// -----------------------------
 async function startLeadCall(reqBody, sourceType) {
   console.log(`${sourceType} webhook body:`, JSON.stringify(reqBody, null, 2));
+
+  console.log('Pacific time now:', getPacificDate().toString());
+  console.log('Business hours?', isBusinessHoursPacific());
 
   const rawPhone = extractPhone(reqBody);
   const phone = formatPhone(rawPhone);
@@ -296,6 +325,19 @@ async function startLeadCall(reqBody, sourceType) {
 
   const currentAttempts = determineCurrentAttempts(reqBody);
   const attemptNumber = determineAttempt(reqBody);
+
+  if (attemptNumber > 3) {
+    await updateHubSpotContact(contactId, {
+      auto_call_status: 'max_attempts_reached',
+      auto_call_attempts: String(currentAttempts),
+      next_call_attempt: ''
+    });
+
+    return {
+      success: true,
+      message: 'Max attempts reached. No call placed.'
+    };
+  }
 
   if (!isBusinessHoursPacific()) {
     const nextBusinessMorning = getNextBusinessMorningPacific(8, 0);
@@ -323,6 +365,8 @@ async function startLeadCall(reqBody, sourceType) {
     };
 
     callbackQueue.unshift(queuedLead);
+
+    console.log('Outside business hours. Scheduled for:', nextBusinessMorning);
 
     return {
       success: true,
@@ -402,8 +446,19 @@ async function startLeadCall(reqBody, sourceType) {
   };
 }
 
+// -----------------------------
+// ROUTES
+// -----------------------------
 app.get('/', (req, res) => {
   res.status(200).send('Maximus Twilio server is running');
+});
+
+app.get('/business-hours-test', (req, res) => {
+  res.json({
+    pacificTime: getPacificDate().toString(),
+    isBusinessHours: isBusinessHoursPacific(),
+    rule: 'Monday-Friday, 8:00 AM - 6:00 PM Pacific'
+  });
 });
 
 app.post('/new-lead', async (req, res) => {
