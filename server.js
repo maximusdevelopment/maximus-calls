@@ -540,21 +540,15 @@ app.post('/agent-whisper', (req, res) => {
 
   const leadName = req.query.leadName || '';
 
-  const gather = twiml.gather({
-    numDigits: 1,
-    action: `${BASE_URL}/agent-accept`,
-    method: 'POST',
-    timeout: 8
-  });
-
   if (leadName) {
-    gather.say(`New marketing lead from HubSpot. ${leadName}. Press any key to accept the call.`);
+    twiml.say(
+      `New marketing lead from HubSpot. ${leadName}. Connecting now.`
+    );
   } else {
-    gather.say('New marketing lead from HubSpot. Press any key to accept the call.');
+    twiml.say(
+      'New marketing lead from HubSpot. Connecting now.'
+    );
   }
-
-  twiml.say('No input received. Goodbye.');
-  twiml.hangup();
 
   res.type('text/xml');
   res.send(twiml.toString());
