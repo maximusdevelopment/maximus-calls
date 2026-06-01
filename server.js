@@ -25,16 +25,14 @@ let callbackQueue = [];
 let callMap = {};
 
 // -----------------------------
-// PHONE HELPERS
+// Phone helpers
 // -----------------------------
 function formatPhone(rawPhone) {
   if (!rawPhone) return null;
 
   const original = String(rawPhone).trim();
 
-  if (original.startsWith('+')) {
-    return original;
-  }
+  if (original.startsWith('+')) return original;
 
   const digits = original.replace(/\D/g, '');
 
@@ -56,24 +54,43 @@ function extractPhone(body) {
 }
 
 // -----------------------------
-// BUSINESS HOURS — PACIFIC TIME
+// Pacific business hours
 // Monday-Friday, 8 AM - 6 PM
 // -----------------------------
+function getPacificParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles',
+    weekday: 'short',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hour12: false,
+    minute: '2-digit'
+  }).formatToParts(date);
+
+  const get = type => parts.find(p => p.type === type)?.value;
+
+  return {
+    weekday: get('weekday'),
+    year: Number(get('year')),
+    month: Number(get('month')),
+    day: Number(get('day')),
+    hour: Number(get('hour')),
+    minute: Number(get('minute'))
+  };
+}
+
 function getPacificDate() {
-  return new Date(
-    new Date().toLocaleString('en-US', {
-      timeZone: 'America/Los_Angeles'
-    })
-  );
+  return new Date().toLocaleString('en-US', {
+    timeZone: 'America/Los_Angeles'
+  });
 }
 
 function isBusinessHoursPacific() {
-  const pacificNow = getPacificDate();
+  const { weekday, hour } = getPacificParts();
 
-  const day = pacificNow.getDay(); // 0 Sunday, 6 Saturday
-  const hour = pacificNow.getHours();
-
-  const isWeekday = day >= 1 && day <= 5;
+  const isWeekday = weekday !== 'Sat' && weekday !== 'Sun';
   const isBusinessHour = hour >= 8 && hour < 18;
 
   return isWeekday && isBusinessHour;
@@ -113,39 +130,31 @@ function pacificLocalToUTCISOString(target) {
 }
 
 function getNextBusinessMorningPacific(hour = 8, minute = 0) {
-  const pacificNow = getPacificDate();
+  const p = getPacificParts();
 
-  let target = new Date(pacificNow);
-  target.setSeconds(0, 0);
+  let target = new Date(p.year, p.month - 1, p.day, hour, minute, 0, 0);
 
-  const day = target.getDay();
-  const currentHour = target.getHours();
+  const todayIsWeekday = p.weekday !== 'Sat' && p.weekday !== 'Sun';
 
-  if (day >= 1 && day <= 5 && currentHour < hour) {
-    target.setHours(hour, minute, 0, 0);
-  } else {
+  if (!todayIsWeekday || p.hour >= hour) {
     target.setDate(target.getDate() + 1);
-    target.setHours(hour, minute, 0, 0);
   }
 
   while (target.getDay() === 0 || target.getDay() === 6) {
     target.setDate(target.getDate() + 1);
-    target.setHours(hour, minute, 0, 0);
   }
 
   return pacificLocalToUTCISOString(target);
 }
 
 function getNextBusinessDayAtPacific(hour, minute) {
-  const pacificNow = getPacificDate();
+  const p = getPacificParts();
 
-  let target = new Date(pacificNow);
+  let target = new Date(p.year, p.month - 1, p.day, hour, minute, 0, 0);
   target.setDate(target.getDate() + 1);
-  target.setHours(hour, minute, 0, 0);
 
   while (target.getDay() === 0 || target.getDay() === 6) {
     target.setDate(target.getDate() + 1);
-    target.setHours(hour, minute, 0, 0);
   }
 
   return pacificLocalToUTCISOString(target);
@@ -166,7 +175,7 @@ function getNextRetryTime(attemptNumber) {
 }
 
 // -----------------------------
-// ATTEMPT LOGIC
+// Attempts
 // -----------------------------
 function determineCurrentAttempts(body) {
   return Number(body.auto_call_attempts || 0);
@@ -185,7 +194,7 @@ function determineAttempt(body) {
 }
 
 // -----------------------------
-// HUBSPOT
+// HubSpot
 // -----------------------------
 async function updateHubSpotContact(contactId, properties) {
   if (!HUBSPOT_TOKEN) {
@@ -212,10 +221,7 @@ async function updateHubSpotContact(contactId, properties) {
 
     console.log('HubSpot contact updated:', contactId, properties);
   } catch (err) {
-    console.error(
-      'HubSpot contact update error:',
-      err.response?.data || err.message
-    );
+    console.error('HubSpot contact update error:', err.response?.data || err.message);
   }
 }
 
@@ -252,10 +258,7 @@ async function createHubSpotNote(contactId, noteBody) {
 
     console.log('HubSpot note created for contact:', contactId);
   } catch (err) {
-    console.error(
-      'HubSpot note creation error:',
-      err.response?.data || err.message
-    );
+    console.error('HubSpot note creation error:', err.response?.data || err.message);
   }
 }
 
@@ -297,12 +300,13 @@ async function markCallResult(lead, status) {
 }
 
 // -----------------------------
-// START CALL
+// Start call
 // -----------------------------
 async function startLeadCall(reqBody, sourceType) {
   console.log(`${sourceType} webhook body:`, JSON.stringify(reqBody, null, 2));
 
-  console.log('Pacific time now:', getPacificDate().toString());
+  console.log('Pacific time now:', getPacificDate());
+  console.log('Pacific parts:', getPacificParts());
   console.log('Business hours?', isBusinessHoursPacific());
 
   const rawPhone = extractPhone(reqBody);
@@ -408,11 +412,9 @@ async function startLeadCall(reqBody, sourceType) {
         from: process.env.TWILIO_NUMBER,
         url: `${BASE_URL}/voice`,
         method: 'POST',
-
         statusCallback: `${BASE_URL}/call-status`,
         statusCallbackMethod: 'POST',
         statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
-
         machineDetection: 'Enable',
         machineDetectionTimeout: 30
       });
@@ -447,7 +449,7 @@ async function startLeadCall(reqBody, sourceType) {
 }
 
 // -----------------------------
-// ROUTES
+// Routes
 // -----------------------------
 app.get('/', (req, res) => {
   res.status(200).send('Maximus Twilio server is running');
@@ -455,7 +457,8 @@ app.get('/', (req, res) => {
 
 app.get('/business-hours-test', (req, res) => {
   res.json({
-    pacificTime: getPacificDate().toString(),
+    pacificTime: getPacificDate(),
+    pacificParts: getPacificParts(),
     isBusinessHours: isBusinessHoursPacific(),
     rule: 'Monday-Friday, 8:00 AM - 6:00 PM Pacific'
   });
