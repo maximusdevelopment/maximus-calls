@@ -4,6 +4,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const twilio = require('twilio');
 const axios = require('axios');
+const sgMail = require('@sendgrid/mail');
 
 const app = express();
 
@@ -20,6 +21,13 @@ const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH);
 const BASE_URL = process.env.BASE_URL || 'https://maximus-calls.onrender.com';
 const MAXIMUS_PHONE = process.env.MAXIMUS_PHONE || '+19162229729';
 const HUBSPOT_TOKEN = process.env.HUBSPOT_PRIVATE_APP_TOKEN;
+const EMAIL_FROM = process.env.EMAIL_FROM || 'support@maximusroof.com';
+
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+} else {
+  console.log('SENDGRID_API_KEY missing. Emails will be skipped.');
+}
 
 const MAX_CALL_ATTEMPTS = 5;
 
@@ -258,6 +266,97 @@ async function createHubSpotNote(contactId, noteBody) {
   }
 }
 
+async function sendProspectSMS(lead, message) {
+  if (!lead?.phone) return;
+
+  try {
+    await client.messages.create({
+      body: message,
+      from: process.env.TWILIO_NUMBER,
+      to: lead.phone
+    });
+
+    console.log('Prospect SMS sent:', lead.phone);
+  } catch (err) {
+    console.error('Prospect SMS error:', err.message);
+  }
+}
+
+async function sendProspectEmail(lead, subject, html) {
+  if (!process.env.SENDGRID_API_KEY) return;
+  if (!lead?.email) return;
+
+  try {
+    await sgMail.send({
+      to: lead.email,
+      from: EMAIL_FROM,
+      subject,
+      html
+    });
+
+    console.log('Prospect email sent:', lead.email);
+  } catch (err) {
+    console.error('Prospect email error:', err.response?.body || err.message);
+  }
+}
+
+async function runTouchStep(lead) {
+  const firstName = lead.firstname || 'there';
+
+  if (lead.attemptNumber === 1) {
+    await sendProspectSMS(
+      lead,
+      `Hi ${firstName}, this is Maximus Roofing. We tried reaching you regarding your roofing inquiry. We offer complimentary roof assessments. Reply here or call us at 916-222-9729. Reply STOP to opt out.`
+    );
+
+    await sendProspectEmail(
+      lead,
+      'Complimentary Roof Assessment',
+      `
+        <p>Hi ${firstName},</p>
+        <p>This is Maximus Roofing. We tried reaching you regarding your roofing inquiry.</p>
+        <p>We offer complimentary roof assessments to help identify leaks, aging roof issues, and restoration opportunities before replacement becomes necessary.</p>
+        <p>You can reply to this email or call us at <strong>916-222-9729</strong>.</p>
+        <p>Thank you,<br>Maximus Roofing</p>
+      `
+    );
+  }
+
+  if (lead.attemptNumber === 3) {
+    await sendProspectEmail(
+      lead,
+      'Following Up on Your Roof Inquiry',
+      `
+        <p>Hi ${firstName},</p>
+        <p>I wanted to follow up regarding your roof inquiry.</p>
+        <p>Maximus Roofing specializes in flat roof restoration, leak prevention, and commercial roof assessments.</p>
+        <p>If you are still interested, reply to this email or call us at <strong>916-222-9729</strong>.</p>
+        <p>Thank you,<br>Maximus Roofing</p>
+      `
+    );
+  }
+
+  if (lead.attemptNumber === 5) {
+    await sendProspectSMS(
+      lead,
+      `Final follow-up from Maximus Roofing. We can still help with a complimentary roof assessment. Reply here or call 916-222-9729. Reply STOP to opt out.`
+    );
+  }
+}
+
+function shouldStopSequence(body) {
+  const status = String(body.auto_sequence_status || '').toLowerCase();
+  const smsReplied = String(body.sms_replied || '').toLowerCase();
+  const emailReplied = String(body.email_replied || '').toLowerCase();
+
+  return (
+    status === 'engaged' ||
+    status === 'stopped' ||
+    smsReplied === 'yes' ||
+    emailReplied === 'yes'
+  );
+}
+
 async function markCallResult(lead, status) {
   if (!lead) return;
 
@@ -275,6 +374,7 @@ async function markCallResult(lead, status) {
   ) {
     properties.hs_lead_status = 'ATTEMPTED_TO_CONTACT';
     properties.auto_call_attempts = String(lead.attemptNumber);
+    await runTouchStep(lead);
 
     const nextRetry = getNextRetryTime(lead.attemptNumber);
 
@@ -286,11 +386,22 @@ async function markCallResult(lead, status) {
       properties.next_call_attempt = '';
       lead.status = 'max_attempts_reached';
       lead.nextCallAttempt = '';
-    }
+    }if (nextRetry) {
+  properties.next_call_attempt = nextRetry;
+  properties.auto_sequence_status = 'Active';
+  lead.nextCallAttempt = nextRetry;
+} else {
+  properties.auto_call_status = 'max_attempts_reached';
+  properties.auto_sequence_status = 'Stopped';
+  properties.next_call_attempt = '';
+  lead.status = 'max_attempts_reached';
+  lead.nextCallAttempt = '';
+}
   }
 
   if (status === 'answered' || status === 'connected') {
     properties.auto_call_status = 'answered';
+    properties.auto_sequence_status = 'Engaged';
     properties.hs_lead_status = 'CONNECTED';
     properties.auto_call_attempts = String(lead.attemptNumber);
     properties.next_call_attempt = '';
@@ -324,6 +435,18 @@ async function startLeadCall(reqBody, sourceType) {
     reqBody.objectId ||
     reqBody.recordId ||
     '';
+  
+  if (shouldStopSequence(reqBody)) {
+  await updateHubSpotContact(contactId, {
+    next_call_attempt: '',
+    auto_call_status: 'sequence_stopped'
+  });
+
+  return {
+    success: true,
+    message: 'Sequence already stopped or lead already engaged. No call placed.'
+  };
+}
 
   const currentAttempts = determineCurrentAttempts(reqBody);
   const attemptNumber = determineAttempt(reqBody);
@@ -396,12 +519,13 @@ async function startLeadCall(reqBody, sourceType) {
   callbackQueue.unshift(lead);
 
   await updateHubSpotContact(lead.contactId, {
-    auto_call_attempts: String(attemptNumber),
-    auto_call_status: `attempt_${attemptNumber}_started`,
-    next_call_attempt: '',
-    twilio_call_sid: '',
-    hs_lead_status: 'ATTEMPTED_TO_CONTACT'
-  });
+  auto_call_attempts: String(attemptNumber),
+  auto_call_status: `attempt_${attemptNumber}_started`,
+  auto_sequence_status: 'Active',
+  next_call_attempt: '',
+  twilio_call_sid: '',
+  hs_lead_status: 'ATTEMPTED_TO_CONTACT'
+});
 
   setTimeout(async () => {
     try {
@@ -631,6 +755,35 @@ app.post('/recording-complete', async (req, res) => {
   } catch (err) {
     console.error('Recording callback error:', err.message);
     res.status(500).send('Recording callback error');
+  }
+});
+
+app.post('/sms-reply', async (req, res) => {
+  try {
+    const from = formatPhone(req.body.From);
+    const body = req.body.Body || '';
+
+    console.log('SMS reply received:', from, body);
+
+    await createHubSpotNote(
+      req.body.contactId,
+      `
+        <p><strong>SMS reply received</strong></p>
+        <p><strong>From:</strong> ${from || ''}</p>
+        <p><strong>Message:</strong> ${body}</p>
+      `
+    );
+
+    // HubSpot contact ID is not available from Twilio SMS by default.
+    // Make Scenario should search HubSpot by phone and update:
+    // sms_replied = Yes
+    // auto_sequence_status = Engaged
+    // next_call_attempt = empty
+
+    res.status(200).send('OK');
+  } catch (err) {
+    console.error('SMS reply endpoint error:', err.message);
+    res.status(500).send('SMS reply error');
   }
 });
 
