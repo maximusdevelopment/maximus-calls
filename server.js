@@ -718,13 +718,14 @@ app.post('/recording-complete', async (req, res) => {
       lead.status = 'recording_completed';
 
       await updateHubSpotContact(lead.contactId, {
-        twilio_recording_url: recordingUrl,
-        twilio_call_sid: callSid,
-        auto_call_status: 'answered',
-        auto_call_attempts: String(lead.attemptNumber),
-        next_call_attempt: '',
-        hs_lead_status: 'CONNECTED'
-      });
+  twilio_recording_url: recordingUrl,
+  twilio_call_sid: callSid,
+  auto_call_status: 'answered',
+  auto_sequence_status: 'Engaged',
+  auto_call_attempts: String(lead.attemptNumber),
+  next_call_attempt: '',
+  hs_lead_status: 'CONNECTED'
+});
 
       await createHubSpotNote(
         lead.contactId,
