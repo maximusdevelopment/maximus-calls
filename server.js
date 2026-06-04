@@ -379,14 +379,6 @@ async function markCallResult(lead, status) {
     const nextRetry = getNextRetryTime(lead.attemptNumber);
 
     if (nextRetry) {
-      properties.next_call_attempt = nextRetry;
-      lead.nextCallAttempt = nextRetry;
-    } else {
-      properties.auto_call_status = 'max_attempts_reached';
-      properties.next_call_attempt = '';
-      lead.status = 'max_attempts_reached';
-      lead.nextCallAttempt = '';
-    }if (nextRetry) {
   properties.next_call_attempt = nextRetry;
   properties.auto_sequence_status = 'Active';
   lead.nextCallAttempt = nextRetry;
@@ -784,6 +776,24 @@ app.post('/sms-reply', async (req, res) => {
   } catch (err) {
     console.error('SMS reply endpoint error:', err.message);
     res.status(500).send('SMS reply error');
+  }
+});
+
+app.post('/email-reply', async (req, res) => {
+  try {
+    const contactId = req.body.contactId || '';
+
+    await updateHubSpotContact(contactId, {
+      email_replied: 'Yes',
+      auto_sequence_status: 'Engaged',
+      auto_call_status: 'email_replied',
+      next_call_attempt: ''
+    });
+
+    res.status(200).send('OK');
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Error');
   }
 });
 
