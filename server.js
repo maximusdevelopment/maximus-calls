@@ -415,8 +415,21 @@ async function startLeadCall(reqBody, sourceType) {
   const phone = formatPhone(rawPhone);
 
  if (!phone) {
+  const contactId =
+    reqBody.contactId ||
+    reqBody.hs_object_id ||
+    reqBody.objectId ||
+    reqBody.recordId ||
+    '';
+
+  await updateHubSpotContact(contactId, {
+    auto_call_status: 'invalid_phone',
+    auto_sequence_status: 'Stopped',
+    next_call_attempt: ''
+  });
+
   console.log(
-    `[SKIPPED] Contact ${reqBody.contactId || 'unknown'} - invalid phone: ${rawPhone}`
+    `[SKIPPED] Contact ${contactId || 'unknown'} - invalid phone: ${rawPhone}`
   );
 
   return {
@@ -425,13 +438,6 @@ async function startLeadCall(reqBody, sourceType) {
     reason: 'Invalid phone number'
   };
 }
-
-  const contactId =
-    reqBody.contactId ||
-    reqBody.hs_object_id ||
-    reqBody.objectId ||
-    reqBody.recordId ||
-    '';
   
   if (shouldStopSequence(reqBody)) {
   await updateHubSpotContact(contactId, {
