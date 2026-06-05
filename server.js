@@ -414,13 +414,17 @@ async function startLeadCall(reqBody, sourceType) {
   const rawPhone = extractPhone(reqBody);
   const phone = formatPhone(rawPhone);
 
-  if (!phone) {
-    console.log('No valid phone received:', rawPhone);
-    return {
-      success: false,
-      error: 'No valid phone received'
-    };
-  }
+ if (!phone) {
+  console.log(
+    `[SKIPPED] Contact ${reqBody.contactId || 'unknown'} - invalid phone: ${rawPhone}`
+  );
+
+  return {
+    success: true,
+    skipped: true,
+    reason: 'Invalid phone number'
+  };
+}
 
   const contactId =
     reqBody.contactId ||
