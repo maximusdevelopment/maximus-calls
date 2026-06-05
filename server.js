@@ -304,10 +304,10 @@ async function runTouchStep(lead) {
   const firstName = lead.firstname || 'there';
 
   if (lead.attemptNumber === 1) {
-    await sendProspectSMS(
-      lead,
-      `Hi ${firstName}, this is Maximus Roofing. We tried reaching you regarding your roofing inquiry. We offer complimentary roof assessments. Reply here or call us at 916-222-9729. Reply STOP to opt out.`
-    );
+  await sendProspectSMS(
+    lead,
+    `Hi ${firstName}, this is Maximus Roofing. Thank you for requesting a roofing estimate. We'd be happy to schedule your complimentary roof assessment. Reply here or call us at 916-222-9729. Reply STOP to opt out.`
+  );
 
     await sendProspectEmail(
       lead,
