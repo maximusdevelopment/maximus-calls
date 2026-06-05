@@ -352,6 +352,7 @@ function shouldStopSequence(body) {
   return (
     status === 'engaged' ||
     status === 'stopped' ||
+    status === 'closed' ||
     smsReplied === 'yes' ||
     emailReplied === 'yes'
   );
