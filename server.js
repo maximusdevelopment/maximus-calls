@@ -479,7 +479,7 @@ if (!phone) {
     const nextBusinessMorning = getNextBusinessMorningPacific(8, 0);
 
     await updateHubSpotContact(contactId, {
-      auto_call_attempts: String(currentAttempts),
+      auto_call_attempts: String(attemptNumber),
       auto_call_status: 'after_hours_scheduled',
       next_call_attempt: nextBusinessMorning,
       hs_lead_status: 'ATTEMPTED_TO_CONTACT'
