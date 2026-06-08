@@ -505,7 +505,7 @@ async function startLeadCall(reqBody, sourceType) {
   }
 
   const lead = {
-    contactId: contactId,
+    contactId: reqBody.contactId || reqBody.hs_object_id || '',
     firstname: reqBody.firstname || reqBody.firstName || '',
     lastname: reqBody.lastname || reqBody.lastName || '',
     email: reqBody.email || '',
