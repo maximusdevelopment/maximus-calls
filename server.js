@@ -163,27 +163,33 @@ function getBusinessDaysFromNowAtPacific(daysToAdd, hour, minute) {
 }
 
 function getNextRetryTime(attemptNumber) {
+
   if (attemptNumber === 1) {
+    const retry = new Date();
+    retry.setMinutes(retry.getMinutes() + 15);
+    return retry.toISOString();
+  }
+
+  if (attemptNumber === 2) {
     const retry = new Date();
     retry.setHours(retry.getHours() + 2);
     return retry.toISOString();
   }
 
-  if (attemptNumber === 2) {
+  if (attemptNumber === 3) {
     return getBusinessDaysFromNowAtPacific(1, 9, 0);
   }
 
-  if (attemptNumber === 3) {
-    return getBusinessDaysFromNowAtPacific(2, 11, 0);
+  if (attemptNumber === 4) {
+    return getBusinessDaysFromNowAtPacific(3, 10, 0);
   }
 
-  if (attemptNumber === 4) {
-    return getBusinessDaysFromNowAtPacific(5, 15, 0);
+  if (attemptNumber === 5) {
+    return getBusinessDaysFromNowAtPacific(7, 10, 0);
   }
 
   return '';
 }
-
 function determineCurrentAttempts(body) {
   return Number(body.auto_call_attempts || 0);
 }
