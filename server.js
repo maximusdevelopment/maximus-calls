@@ -498,7 +498,7 @@ if (!phone) {
       email: reqBody.email || '',
       phone,
       source: reqBody.source || sourceType,
-      attemptNumber: currentAttempts,
+      attemptNumber: attemptNumber,
       status: 'after_hours_scheduled',
       createdAt: new Date().toISOString(),
       callSid: '',
