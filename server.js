@@ -29,7 +29,7 @@ if (process.env.SENDGRID_API_KEY) {
   console.log('SENDGRID_API_KEY missing. Emails will be skipped.');
 }
 
-const MAX_CALL_ATTEMPTS = 5;
+const MAX_CALL_ATTEMPTS = 6;
 
 let callbackQueue = [];
 let callMap = {};
@@ -425,16 +425,16 @@ async function startLeadCall(reqBody, sourceType) {
   console.log('Business hours?', isBusinessHoursPacific());
 
   const rawPhone = extractPhone(reqBody);
-  const phone = formatPhone(rawPhone);
+const phone = formatPhone(rawPhone);
 
- if (!phone) {
-  const contactId =
-    reqBody.contactId ||
-    reqBody.hs_object_id ||
-    reqBody.objectId ||
-    reqBody.recordId ||
-    '';
+const contactId =
+  reqBody.contactId ||
+  reqBody.hs_object_id ||
+  reqBody.objectId ||
+  reqBody.recordId ||
+  '';
 
+if (!phone) {
   await updateHubSpotContact(contactId, {
     auto_call_status: 'invalid_phone',
     auto_sequence_status: 'Stopped',
@@ -451,6 +451,7 @@ async function startLeadCall(reqBody, sourceType) {
     reason: 'Invalid phone number'
   };
 }
+
   
   if (shouldStopSequence(reqBody)) {
   await updateHubSpotContact(contactId, {
