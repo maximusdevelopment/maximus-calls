@@ -270,6 +270,13 @@ async function sendProspectSMS(lead, message) {
   if (!lead?.phone) return;
 
   try {
+
+    console.log(
+  'SMS DEBUG:',
+  process.env.MESSAGING_SERVICE_SID,
+  lead.phone
+);
+    
     await client.messages.create({
       body: message,
       messagingServiceSid: process.env.MESSAGING_SERVICE_SID,
