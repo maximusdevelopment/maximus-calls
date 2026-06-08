@@ -513,7 +513,7 @@ if (!phone) {
   }
 
   const lead = {
-    contactId: reqBody.contactId || reqBody.hs_object_id || '',
+    contactId,
     firstname: reqBody.firstname || reqBody.firstName || '',
     lastname: reqBody.lastname || reqBody.lastName || '',
     email: reqBody.email || '',
