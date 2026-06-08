@@ -652,7 +652,7 @@ app.post('/voice', async (req, res) => {
 
   twiml.say(
     { voice: 'alice' },
-    'Hi, this is Maximus Roofing. Thank you for requesting a roofing estimate. We will try reaching you again shortly, or call us directly at 916-222-9729.'
+    'Hi, this is Maximus Roofing. Thank you for requesting a roofing estimate. We just tried reaching you regarding your request. Please call us back at 916-222-9729 or reply to our text message. We look forward to speaking with you.'
   );
 
   twiml.hangup();
