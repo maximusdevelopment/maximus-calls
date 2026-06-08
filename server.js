@@ -644,14 +644,19 @@ app.post('/voice', async (req, res) => {
     twiml.say('Our team is unavailable at the moment. We will call you back shortly.');
     twiml.hangup();
   } else {
-    console.log('Machine or voicemail detected. Hanging up.');
+  console.log('Machine detected. Leaving voicemail.');
 
-    if (lead) {
-      await markCallResult(lead, 'voicemail');
-    }
-
-    twiml.hangup();
+  if (lead) {
+    await markCallResult(lead, 'voicemail');
   }
+
+  twiml.say(
+    { voice: 'alice' },
+    'Hi, this is Maximus Roofing. Thank you for requesting a roofing estimate. We will try reaching you again shortly, or call us directly at 916-222-9729.'
+  );
+
+  twiml.hangup();
+}
 
   res.type('text/xml');
   res.send(twiml.toString());
