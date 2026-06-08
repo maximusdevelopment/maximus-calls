@@ -272,7 +272,7 @@ async function sendProspectSMS(lead, message) {
   try {
     await client.messages.create({
       body: message,
-      from: process.env.TWILIO_NUMBER,
+      messagingServiceSid: process.env.MESSAGING_SERVICE_SID,
       to: lead.phone
     });
 
