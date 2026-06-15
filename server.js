@@ -127,7 +127,7 @@ function pacificLocalToUTCISOString(target) {
   return new Date(utcMs).toISOString();
 }
 
-function getNextBusinessMorningPacific(hour = 8, minute = 0) {
+function getNextBusinessMorningPacific(hour = 9, minute = 0) {
   const p = getPacificParts();
 
   let target = new Date(p.year, p.month - 1, p.day, hour, minute, 0, 0);
@@ -476,7 +476,7 @@ if (!phone) {
   }
 
   if (!isBusinessHoursPacific()) {
-    const nextBusinessMorning = getNextBusinessMorningPacific(8, 0);
+    const nextBusinessMorning = getNextBusinessMorningPacific(9, 0);
 
     await updateHubSpotContact(contactId, {
       auto_call_attempts: String(attemptNumber),
