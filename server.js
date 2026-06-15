@@ -356,12 +356,22 @@ function shouldStopSequence(body) {
   const smsReplied = String(body.sms_replied || '').toLowerCase();
   const emailReplied = String(body.email_replied || '').toLowerCase();
 
+  const leadStatus = String(
+    body.hs_lead_status ||
+    body.lead_status ||
+    ''
+  ).toUpperCase();
+
   return (
     status === 'engaged' ||
     status === 'stopped' ||
     status === 'closed' ||
     smsReplied === 'yes' ||
-    emailReplied === 'yes'
+    emailReplied === 'yes' ||
+    (
+      leadStatus &&
+      leadStatus !== 'ATTEMPTED_TO_CONTACT'
+    )
   );
 }
 
