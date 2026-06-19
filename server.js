@@ -676,18 +676,15 @@ app.post('/voice', async (req, res) => {
     }
 
     twiml.say('Please hold while we connect you with Maximus Roofing.');
-
-    const leadName = encodeURIComponent(
-      `${lead?.firstname || ''} ${lead?.lastname || ''}`.trim()
-    );
+    twiml.play('https://com.twilio.music.classical.s3.amazonaws.com/BusyStrings.mp3');
 
     const dial = twiml.dial({
       answerOnBridge: true,
-      timeout: 12,
+      timeout: 20,
       callerId: lead?.phone || process.env.TWILIO_NUMBER,
       record: 'record-from-answer-dual',
       recordingStatusCallback: `${BASE_URL}/recording-complete`,
-      recordingStatusCallbackMethod: 'POST'
+      recordingStatusCallbackMethod: 'POST',
     });
 
     dial.number(
