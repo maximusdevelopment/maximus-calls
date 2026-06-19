@@ -415,6 +415,7 @@ async function markCallResult(lead, status) {
     properties.hs_lead_status = 'CONNECTED';
     properties.auto_call_attempts = String(lead.attemptNumber);
     properties.next_call_attempt = '';
+    properties.auto_call_eligible = 'No';
     lead.nextCallAttempt = '';
   }
 
