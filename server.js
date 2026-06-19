@@ -310,71 +310,84 @@ async function sendProspectEmail(lead, subject, html) {
 async function runTouchStep(lead) {
   const firstName = lead.firstname || 'there';
 
+  // TOUCH 1
   if (lead.attemptNumber === 1) {
-  await sendProspectSMS(
-    lead,
-    `Hi ${firstName}, this is Maximus Roofing. Thank you for requesting a roofing estimate. We just tried reaching you by phone and would be happy to schedule your complimentary roof assessment. Reply here or call us at 916-222-9729. Reply STOP to opt out.`
-  );
+
+    await sendProspectSMS(
+      lead,
+      `Hi ${firstName}, this is Maximus Roofing. Thank you for requesting a roofing estimate. We just tried reaching you by phone and would be happy to schedule your complimentary roof assessment. Reply here or call us at 916-222-9729. Reply STOP to opt out.`
+    );
 
     await sendProspectEmail(
       lead,
       'Complimentary Roof Assessment',
       `
-        <p>Hi ${firstName},</p>
-        <p>This is Maximus Roofing. We tried reaching you regarding your roofing inquiry.</p>
-        <p>We offer complimentary roof assessments to help identify leaks, aging roof issues, and restoration opportunities before replacement becomes necessary.</p>
-        <p>You can reply to this email or call us at <strong>916-222-9729</strong>.</p>
-        <p>Thank you,<br>Maximus Roofing</p>
+      <p>Hi ${firstName},</p>
+      <p>This is Maximus Roofing. We tried reaching you regarding your roofing inquiry.</p>
+      <p>We offer complimentary roof assessments to help identify leaks, aging roof issues, and restoration opportunities before replacement becomes necessary.</p>
+      <p>You can reply to this email or call us at <strong>916-222-9729</strong>.</p>
+      <p>Thank you,<br>Maximus Roofing</p>
       `
     );
   }
 
+  // TOUCH 3
   if (lead.attemptNumber === 3) {
+
+    await sendProspectSMS(
+      lead,
+      `Hi ${firstName}, this is Maximus Roofing following up on your roofing inquiry. We'd still be happy to provide a complimentary roof assessment. Call 916-222-9729 or reply to this message. Reply STOP to opt out.`
+    );
+
     await sendProspectEmail(
       lead,
       'Following Up on Your Roof Inquiry',
       `
-        <p>Hi ${firstName},</p>
-        <p>I wanted to follow up regarding your roof inquiry.</p>
-        <p>Maximus Roofing specializes in flat roof restoration, leak prevention, and commercial roof assessments.</p>
-        <p>If you are still interested, reply to this email or call us at <strong>916-222-9729</strong>.</p>
-        <p>Thank you,<br>Maximus Roofing</p>
+      <p>Hi ${firstName},</p>
+      <p>I wanted to follow up regarding your roof inquiry.</p>
+      <p>Maximus Roofing specializes in flat roof restoration, leak prevention, and commercial roof assessments.</p>
+      <p>If you are still interested, reply to this email or call us at <strong>916-222-9729</strong>.</p>
+      <p>Thank you,<br>Maximus Roofing</p>
       `
     );
   }
 
+  // TOUCH 5
   if (lead.attemptNumber === 5) {
+
     await sendProspectSMS(
       lead,
       `Final follow-up from Maximus Roofing. We can still help with a complimentary roof assessment. Reply here or call 916-222-9729. Reply STOP to opt out.`
     );
   }
+
+  // TOUCH 6
+  if (lead.attemptNumber === 6) {
+
+    await sendProspectSMS(
+      lead,
+      `Last attempt from Maximus Roofing. If your roof project is still being considered, we'd be happy to help. Call 916-222-9729 or reply to this text. Reply STOP to opt out.`
+    );
+
+    await sendProspectEmail(
+      lead,
+      'Last Follow-Up Regarding Your Roof Project',
+      `
+      <p>Hi ${firstName},</p>
+
+      <p>This is our final follow-up regarding your roofing inquiry.</p>
+
+      <p>Maximus Roofing specializes in commercial flat roof restoration, roof coatings, leak repair, inspections, and preventative maintenance throughout Northern California.</p>
+
+      <p>If your project is still active, simply reply to this email or call us at <strong>916-222-9729</strong>.</p>
+
+      <p>We would be happy to provide a complimentary roof assessment.</p>
+
+      <p>Thank you,<br>Maximus Roofing</p>
+      `
+    );
+  }
 }
-
-function shouldStopSequence(body) {
-  const status = String(body.auto_sequence_status || '').toLowerCase();
-  const smsReplied = String(body.sms_replied || '').toLowerCase();
-  const emailReplied = String(body.email_replied || '').toLowerCase();
-
-  const leadStatus = String(
-    body.hs_lead_status ||
-    body.lead_status ||
-    ''
-  ).toUpperCase();
-
-  return (
-    status === 'engaged' ||
-    status === 'stopped' ||
-    status === 'closed' ||
-    smsReplied === 'yes' ||
-    emailReplied === 'yes' ||
-    (
-      leadStatus &&
-      leadStatus !== 'ATTEMPTED_TO_CONTACT'
-    )
-  );
-}
-
 async function markCallResult(lead, status) {
   if (!lead) return;
 
