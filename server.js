@@ -388,6 +388,31 @@ async function runTouchStep(lead) {
     );
   }
 }
+
+function shouldStopSequence(body) {
+  const status = String(body.auto_sequence_status || '').toLowerCase();
+  const smsReplied = String(body.sms_replied || '').toLowerCase();
+  const emailReplied = String(body.email_replied || '').toLowerCase();
+
+  const leadStatus = String(
+    body.hs_lead_status ||
+    body.lead_status ||
+    ''
+  ).toUpperCase();
+
+  return (
+    status === 'engaged' ||
+    status === 'stopped' ||
+    status === 'closed' ||
+    smsReplied === 'yes' ||
+    emailReplied === 'yes' ||
+    (
+      leadStatus &&
+      leadStatus !== 'ATTEMPTED_TO_CONTACT'
+    )
+  );
+}
+
 async function markCallResult(lead, status) {
   if (!lead) return;
 
