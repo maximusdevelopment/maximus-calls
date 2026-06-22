@@ -722,7 +722,7 @@ app.post('/agent-whisper', (req, res) => {
   const leadName = req.query.leadName || '';
 
   if (leadName) {
-    twiml.say(`New marketing lead from HubSpot. ${leadName}. Connecting now.`);
+    twiml.say(`New HubSpot lead on the line. Prospect's first name is ${firstName}. Connecting now.`);
   } else {
     twiml.say('New marketing lead from HubSpot. Connecting now.');
   }
