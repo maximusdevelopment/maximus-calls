@@ -297,6 +297,7 @@ async function sendProspectEmail(lead, subject, html) {
     await sgMail.send({
       to: lead.email,
       from: EMAIL_FROM,
+      replyTo: 'support@maximusroof.com',
       subject,
       html
     });
